@@ -10,6 +10,7 @@ import (
 	"net/mail"
 	"net/smtp"
 	"strings"
+	"time"
 
 	"bosun.org/collect"
 	"bosun.org/metadata"
@@ -27,6 +28,8 @@ func init() {
 		"bosun.email.sent_failed", metadata.Counter, metadata.PerSecond,
 		"The number of email notifications that Bosun failed to send.")
 }
+
+const defaultHTTPTimeout = time.Second * 30
 
 // Notify triggers Email/HTTP/Print actions for the Notification object
 func (n *Notification) Notify(subject, body string, emailsubject, emailbody []byte, c SystemConfProvider, ak string, attachments ...*models.Attachment) {
@@ -69,7 +72,10 @@ func (n *Notification) DoPost(payload []byte, ak string) {
 		}
 		payload = buf.Bytes()
 	}
-	resp, err := http.Post(n.Post.String(), n.ContentType, bytes.NewBuffer(payload))
+	var postClient = &http.Client{
+		Timeout: n.getHTTPTimeout(),
+	}
+	resp, err := postClient.Post(n.Post.String(), n.ContentType, bytes.NewBuffer(payload))
 	if resp != nil && resp.Body != nil {
 		// Drain up to 512 bytes and close the body to let the Transport reuse the connection
 		io.CopyN(ioutil.Discard, resp.Body, 512)
@@ -79,6 +85,7 @@ func (n *Notification) DoPost(payload []byte, ak string) {
 		slog.Error(err)
 		return
 	}
+
 	if resp.StatusCode >= 300 {
 		slog.Errorln("bad response on notification post:", resp.Status)
 	} else {
@@ -87,11 +94,15 @@ func (n *Notification) DoPost(payload []byte, ak string) {
 }
 
 func (n *Notification) DoGet(ak string) {
-	resp, err := http.Get(n.Get.String())
+	var getClient = &http.Client{
+		Timeout: n.getHTTPTimeout(),
+	}
+	resp, err := getClient.Get(n.Get.String())
 	if err != nil {
 		slog.Error(err)
 		return
 	}
+	resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		slog.Error("bad response on notification get:", resp.Status)
 	} else {
@@ -118,6 +129,14 @@ func (n *Notification) DoEmail(subject, body []byte, c SystemConfProvider, ak st
 	}
 	collect.Add("email.sent", nil, 1)
 	slog.Infof("relayed alert %v to %v sucessfully. Subject: %d bytes. Body: %d bytes.", ak, e.To, len(subject), len(body))
+}
+
+func (n *Notification) getHTTPTimeout() time.Duration {
+	if n.HTTPTimeout != 0 {
+		return n.HTTPTimeout
+	}
+	return defaultHTTPTimeout
+
 }
 
 // Send an email using the given host and SMTP auth (optional), returns any
