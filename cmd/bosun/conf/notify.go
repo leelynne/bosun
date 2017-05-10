@@ -102,7 +102,7 @@ func (n *Notification) DoGet(ak string) {
 		slog.Error(err)
 		return
 	}
-	resp.Body.Close()
+
 	if resp.StatusCode >= 300 {
 		slog.Error("bad response on notification get:", resp.Status)
 	} else {
