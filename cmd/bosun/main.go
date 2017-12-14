@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
 	_ "net/http/pprof"
 	"net/url"
 	"os"
@@ -45,6 +46,13 @@ func (t *bosunHttpTransport) RoundTrip(req *http.Request) (*http.Response, error
 		req.Header.Add("User-Agent", t.UserAgent)
 	}
 	req.Header.Add("X-Bosun-Server", util.Hostname)
+	slog.Info("DUMPING REQUEST")
+	reqstr, err := httputil.DumpRequest(req, true)
+	if err != nil {
+		slog.Errorf("Could not dump http request - '%s'", err)
+	} else {
+		slog.Info(string(reqstr))
+	}
 	return t.RoundTripper.RoundTrip(req)
 }
 
@@ -290,6 +298,7 @@ func main() {
 		base := filepath.Join("web", "static", "js")
 		watch(base, "*.ts", web.RunTsc)
 	}
+	slog.Info("RUNNING")
 	select {}
 }
 
